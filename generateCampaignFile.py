@@ -12,6 +12,8 @@ from argparse import ArgumentParser
 import re
 import os, sys
 
+
+
 if sys.version_info[0:3] < (3,4,3):
     exit("Python version should be >= 3.4.3")
 
