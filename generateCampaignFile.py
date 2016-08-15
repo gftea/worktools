@@ -127,59 +127,64 @@ class WayPointElem(object):
 
     def getElem(self):
         return self.__elem
-        
-arg_parser = ArgumentParser()
-arg_parser.add_argument('raw_script_file')
-args = arg_parser.parse_args()
 
 
-re_mtsconfigenb = re.compile(r"^FORW MTE MTSCONFIGENB\s+(\d+)\s*\{\s*(.+)\s*\}$", re.I)
-re_enb = re.compile(r"(\d+)\s+(-?\d+)\s+(-?\d+)\s+(\d+)\s*\{(.+?)\s*\}\s*")
-re_cell = re.compile(r"(\d+)\s+\d+\s+(\d+)\s*\[\s*(\d+)\s+(\d+)\s+.+?\]")
-
-re_mstconfigpath = re.compile(r"^FORW MTE MTSCONFIGPATH\s+(\d+)\s+(\d+)\s*\{\s*(.+)\s*\}$", re.I)
-re_waypoint = re.compile("(-?\d+)\s+(-?\d+)")
-
-f_rootname = os.path.splitext(os.path.basename(args.raw_script_file))[0]
-root_elem = RootElem(f_rootname) 
-wp_set = set() # for excluding duplicated path
-
-with open(args.raw_script_file) as f:
-    for line in f.readlines():
-        # remove comment string
-        (mts_cmd, sep, c) = line.partition(r"#") 
-        mts_cmd = mts_cmd.strip()
-        
-        m_cmd = re_mtsconfigenb.fullmatch(mts_cmd)
-        if m_cmd :
-            enbs = m_cmd.group(2)
-            for m_enb in re_enb.finditer(enbs):
-                enb_elem = EnbElem(m_enb.group(1), m_enb.group(2), m_enb.group(3))
-                cells = m_enb.group(5)
-                for m_cell in re_cell.finditer(cells):
-                    cell_elem = CellElem(*m_cell.groups())
-                    enb_elem.addCell(cell_elem)
-                root_elem.addEnb(enb_elem)
-
-        m_cmd = re_mstconfigpath.fullmatch(mts_cmd)
-        if m_cmd and m_cmd.group(3) not in wp_set:
-            route_elem = RouteElem(m_cmd.group(1))
-            waypoints = m_cmd.group(3)
-            wp_set.add(waypoints)
-            for m_wp in re_waypoint.finditer(waypoints):
-                wp = WayPointElem(*m_wp.groups())
-                route_elem.addWaypoint(wp)
-            root_elem.addRoute(route_elem)
-
-outfile_name = f_rootname + '.xml'
-
-if os.path.exists(outfile_name):
-    os.remove(outfile_name)
-tree = ElementTree(root_elem.getElem())
-
-xmltext = ET.tostring(root_elem.getElem(), encoding='unicode')
-xmltext = '\n'.join(RootElem.root_template.splitlines()[0:2] + [xmltext])
-with open(outfile_name, 'w') as f:
-    f.write(xmltext)
+def main():
+    arg_parser = ArgumentParser()
+    arg_parser.add_argument('raw_script_file')
+    args = arg_parser.parse_args()
 
 
+    re_mtsconfigenb = re.compile(r"^FORW MTE MTSCONFIGENB\s+(\d+)\s*\{\s*(.+)\s*\}$", re.I)
+    re_enb = re.compile(r"(\d+)\s+(-?\d+)\s+(-?\d+)\s+(\d+)\s*\{(.+?)\s*\}\s*")
+    re_cell = re.compile(r"(\d+)\s+\d+\s+(\d+)\s*\[\s*(\d+)\s+(\d+)\s+.+?\]")
+
+    re_mstconfigpath = re.compile(r"^FORW MTE MTSCONFIGPATH\s+(\d+)\s+(\d+)\s*\{\s*(.+)\s*\}$", re.I)
+    re_waypoint = re.compile("(-?\d+)\s+(-?\d+)")
+
+    f_rootname = os.path.splitext(os.path.basename(args.raw_script_file))[0]
+    root_elem = RootElem(f_rootname) 
+    wp_set = set() # for excluding duplicated path
+
+    with open(args.raw_script_file) as f:
+        for line in f.readlines():
+            # remove comment string
+            (mts_cmd, sep, c) = line.partition(r"#") 
+            mts_cmd = mts_cmd.strip()
+
+            m_cmd = re_mtsconfigenb.fullmatch(mts_cmd)
+            if m_cmd :
+                enbs = m_cmd.group(2)
+                for m_enb in re_enb.finditer(enbs):
+                    enb_elem = EnbElem(m_enb.group(1), m_enb.group(2), m_enb.group(3))
+                    cells = m_enb.group(5)
+                    for m_cell in re_cell.finditer(cells):
+                        cell_elem = CellElem(*m_cell.groups())
+                        enb_elem.addCell(cell_elem)
+                    root_elem.addEnb(enb_elem)
+
+            m_cmd = re_mstconfigpath.fullmatch(mts_cmd)
+            if m_cmd and m_cmd.group(3) not in wp_set:
+                route_elem = RouteElem(m_cmd.group(1))
+                waypoints = m_cmd.group(3)
+                wp_set.add(waypoints)
+                for m_wp in re_waypoint.finditer(waypoints):
+                    wp = WayPointElem(*m_wp.groups())
+                    route_elem.addWaypoint(wp)
+                root_elem.addRoute(route_elem)
+
+    outfile_name = f_rootname + '.xml'
+
+
+    if os.path.exists(outfile_name):
+        os.remove(outfile_name)
+    tree = ElementTree(root_elem.getElem())
+
+    xmltext = ET.tostring(root_elem.getElem(), encoding='unicode')
+    xmltext = '\n'.join(RootElem.root_template.splitlines()[0:2] + [xmltext])
+    with open(outfile_name, 'w') as f:
+        f.write(xmltext)
+
+
+if __name__ == '__main__':
+    main()
