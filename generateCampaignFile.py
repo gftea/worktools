@@ -1,5 +1,5 @@
 """
-The script extract cells and routes data from TMA raw script and 
+The script extract cells and routes data from TMA raw script and
 generate Campaign xml file which can be imported to TMA E500.
 When importing the generated file from TMA, please uncheck all options.
 
@@ -7,14 +7,13 @@ ekaiqch 2016-08-02
 """
 
 from xml.etree import ElementTree as ET
-from xml.etree.ElementTree import ElementTree
 from argparse import ArgumentParser
 import re
-import os, sys
+import os
+import sys
 
 
-
-if sys.version_info[0:3] < (3,4,3):
+if sys.version_info[0:3] < (3, 4, 3):
     exit("Python version should be >= 3.4.3")
 
 
@@ -32,22 +31,23 @@ class RootElem(object):
         </eNodeBs>
         <RouteSet>
         </RouteSet>
-    </RouteSetAndENBConfig>  
+    </RouteSetAndENBConfig>
 </Campaign>
 '''
+
     def __init__(self, name):
         self.__elem = ET.fromstring(RootElem.root_template)
         # below is workaround for namespace handling
         self.__elem.set('xmlns:xsi', "http://www.w3.org/2001/XMLSchema-instance")
         self.__elem.set('xmlns:xsd', "http://www.w3.org/2001/XMLSchema")
         self.__elem.find('./CampaignName').text = name
-        
+
     def addEnb(self, enb):
         self.__elem.find(".//eNodeBs").append(enb.getElem())
-    
+
     def addRoute(self, route):
         self.__elem.find(".//RouteSet").append(route.getElem())
-    
+
     def getElem(self):
         return self.__elem
 
@@ -64,6 +64,7 @@ class EnbElem(object):
     </Cells>
 </eNBConfig>
 '''
+
     def __init__(self, enb_id, x, y):
         self.__elem = ET.fromstring(EnbElem.enbconfig_template)
         self.__elem.find("./eNodeBName").text = "eNB_" + str(enb_id) 
@@ -75,7 +76,8 @@ class EnbElem(object):
 
     def getElem(self):
         return self.__elem
-        
+
+
 class CellElem(object):
     cell_template = '''\
 <Transmitter>
@@ -85,6 +87,7 @@ class CellElem(object):
     <CellId>0</CellId>
 </Transmitter>
 '''
+
     def __init__(self, cid, radius, start, end):
         self.__elem = ET.fromstring(CellElem.cell_template)
         self.__elem.find(".//CellId").text = cid
@@ -95,6 +98,7 @@ class CellElem(object):
     def getElem(self):
         return self.__elem
 
+
 class RouteElem(object):
     route_template = '''\
 <Route>
@@ -104,6 +108,7 @@ class RouteElem(object):
     <WaypointGraphicValue>RedPin</WaypointGraphicValue>
 </Route>
 '''
+
     def __init__(self, route_id, graph='RedPin'):
         self.__elem = ET.fromstring(RouteElem.route_template)
         self.__elem.find(".//Name").text = 'r' + str(route_id)
@@ -114,7 +119,8 @@ class RouteElem(object):
 
     def getElem(self):
         return self.__elem
-        
+
+
 class WayPointElem(object):
     waypoint_template = '''\
 <WayPoint>
@@ -122,6 +128,7 @@ class WayPointElem(object):
     <Y>55</Y>
 </WayPoint>
 '''
+
     def __init__(self, x, y):
         self.__elem = ET.fromstring(WayPointElem.waypoint_template)
         self.__elem.find("./X").text = x
@@ -136,7 +143,6 @@ def main():
     arg_parser.add_argument('raw_script_file')
     args = arg_parser.parse_args()
 
-
     re_mtsconfigenb = re.compile(r"^FORW MTE MTSCONFIGENB\s+(\d+)\s*\{\s*(.+)\s*\}$", re.I)
     re_enb = re.compile(r"(\d+)\s+(-?\d+)\s+(-?\d+)\s+(\d+)\s*\{(.+?)\s*\}\s*")
     re_cell = re.compile(r"(\d+)\s+\d+\s+(\d+)\s*\[\s*(\d+)\s+(\d+)\s+.+?\]")
@@ -146,12 +152,12 @@ def main():
 
     f_rootname = os.path.splitext(os.path.basename(args.raw_script_file))[0]
     root_elem = RootElem(f_rootname) 
-    wp_set = set() # for excluding duplicated path
+    wp_set = set()  # for excluding duplicated path
 
     with open(args.raw_script_file) as f:
         for line in f.readlines():
             # remove comment string
-            (mts_cmd, sep, c) = line.partition(r"#") 
+            (mts_cmd, sep, c) = line.partition(r"#")
             mts_cmd = mts_cmd.strip()
 
             m_cmd = re_mtsconfigenb.fullmatch(mts_cmd)
@@ -177,10 +183,8 @@ def main():
 
     outfile_name = f_rootname + '.xml'
 
-
     if os.path.exists(outfile_name):
         os.remove(outfile_name)
-    tree = ElementTree(root_elem.getElem())
 
     xmltext = ET.tostring(root_elem.getElem(), encoding='unicode')
     xmltext = '\n'.join(RootElem.root_template.splitlines()[0:2] + [xmltext])
