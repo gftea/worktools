@@ -2,32 +2,66 @@ import re
 import sys
 import os
 from xml.etree import ElementTree
+from xml.dom.minidom import parseString
+
+
+
+COMMON_HEADER_TEMPLATE = '''\
+<!-- This file is created by script /proj/stab_lmr/ekaiqch/tools/parse_ltesim_cmd.py  -->
+<beans
+    xsi:schemaLocation="http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans.xsd http://www.springframework.org/schema/context http://www.springframework.org/schema/context/spring-context.xsd http://www.springframework.org/schema/util http://www.springframework.org/schema/util/spring-util-3.0.xsd"
+    xmlns:p="http://www.springframework.org/schema/p" xmlns:context="http://www.springframework.org/schema/context"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns="http://www.springframework.org/schema/beans"
+    xmlns:util="http://www.springframework.org/schema/util">
+<!-- Needed for @PostConstruct in UBSimUEPairList --><bean class="org.springframework.context.annotation.CommonAnnotationBeanPostProcessor" />
+</beans>
+'''
+
+AREA_TEMPLATE = '''\
+<bean class="com.ericsson.msran.test.stability.traffic.ltesim.interfaces.Area"></bean>
+'''
+
+CELL_TEMPLATE = '''\
+<bean class="com.ericsson.msran.test.stability.traffic.ltesim.interfaces.UctoolCell"></bean>
+'''
+
+UEPAIRLIST_TEMPLATE = '''\
+<property name="UEPairList"><bean class="com.ericsson.msran.test.stability.traffic.ltesim.helpers.UBSimUEPairList"></bean></property>
+'''
+
+KV_PATTERN = re.compile(r':(?P<name>\w+)\s*=>\s*"?(?P<value>[-_0-9a-zA-Z.]+)"?')
+GROUP_PATTERN = re.compile(r'{(.+?)}')
+LTESIMCLI_PATTERN = re.compile('ltesim_cli')
+UEPAIR_PATTERN = re.compile(
+    r'(?P<cnt1>\d+)\.times.*(?P<cnt2>\d+)\.times.*create_user_pair\(.*,\s*"(?P<mobility>\w+)"\s*,\s*"(?P<csmodel>\w+)"\s*,\s*"(?P<psmodel>\w+)"\s*,\s*"(?P<uetype>\w+)"\s*,\s*"(?P<area>\w+)"\s*\)')
+
+
+RED = '\033[31m'
+BLUE = '\033[34m'
+CYAN = '\033[36m'
+ENDC = '\033[0m'
+
+USAGE = CYAN + '''
+Usage:
+    python parse_ltesim_cmd.py file1 file2
+
+file1 should contain command for ltesim configuration, For example: "ltesim_cli -ni -nc configuration.rb --args ..."
+file2 should contain commands for UBSim which create user pairs.
+''' + ENDC
+
 
 def red(s):
-    RED = '\033[31m'
-    ENDC = '\033[0m'
     return RED+s+ENDC
 
-area_template = '''\
-<bean id="CENTER11" class="com.ericsson.msran.test.stability.traffic.ltesim.interfaces.Area">
-</bean>
-'''
 
-cell_template = '''\
-<bean id="Cell11" class="com.ericsson.msran.test.stability.traffic.ltesim.interfaces.UctoolCell">
-</bean>
-'''
 
-kv_pat = re.compile(r':(?P<name>\w+)\s*=>\s*"?(?P<value>[-_0-9a-zA-Z.]+)"?')
-group_pat = re.compile(r'{(.+?)}')
-ltesimcli_pat = re.compile('ltesim_cli')
-uepair_pat = re.compile(
-    r'(?P<cnt1>\d+)\.times.*(?P<cnt2>\d+)\.times.*create_user_pair\(.*,\s*"(?P<area>\w+)"\s*\)')
+if (len(sys.argv)) < 2:
+    sys.exit(USAGE)
 
 ltesim_cli_cmd = None
 with open(sys.argv[1]) as f:
     for line in f:
-        if ltesimcli_pat.match(line):
+        if LTESIMCLI_PATTERN.match(line):
             ltesim_cli_cmd = line
 
 if not ltesim_cli_cmd:
@@ -36,20 +70,22 @@ if not ltesim_cli_cmd:
 ue_pair_map = dict()
 with open(sys.argv[2]) as f:
     for line in f:
-        m = uepair_pat.search(line)
+        m = UEPAIR_PATTERN.search(line)
         if m:
             area = m.group('area').upper()
-            numbers = ue_pair_map.setdefault(area, [])
-            numbers.append(str(int(m.group('cnt1')) * int(m.group('cnt2'))))
+            ubsim_plist = ue_pair_map.setdefault(area, [])  # list of tuple
+            num = str(int(m.group('cnt1')) * int(m.group('cnt2')))
+            ubsim_plist.append((num, m.group('mobility'), m.group('csmodel'), m.group('psmodel'), m.group('uetype')))
+
     
 
 area_elem_list = []
 cell_elem_list = []
-for g in group_pat.finditer(ltesim_cli_cmd):
+for g in GROUP_PATTERN.finditer(ltesim_cli_cmd):
     attr_list = []  # list of dict
 
     is_area = is_cell = False
-    for p in kv_pat.finditer(g.group(1)):
+    for p in KV_PATTERN.finditer(g.group(1)):
         attr_list.append(p.groupdict())
         if ('area' == p.group('name')): 
             is_area = True
@@ -61,24 +97,34 @@ for g in group_pat.finditer(ltesim_cli_cmd):
 
     # create 'area' bean
     if is_area:
-        area_elem = ElementTree.fromstring(area_template)
+        area_elem = ElementTree.fromstring(AREA_TEMPLATE)
         for attr in attr_list:
             if (attr['name'] == 'area'):
                 attr['value'] = attr['value'].upper()
                 area_elem.set('id', attr['value'])
             ElementTree.SubElement(area_elem, 'property', attr)
 
-        attr = {'name': 'UEPairList'}
-        uepairlist_elem = ElementTree.SubElement(area_elem, 'property', attr)        
 
-        attr = {'parent': 'FIXME'}
-        attr['p:numbers'] = ','.join(ue_pair_map.get(area_elem.get('id')))
-        ElementTree.SubElement(uepairlist_elem, 'bean', attr)
+        uepairlist_elem = ElementTree.fromstring(UEPAIRLIST_TEMPLATE)
+        area_elem.append(uepairlist_elem)
+        uelistbean_elem = uepairlist_elem.find('bean')
+
+        ubsim_plist = ue_pair_map.get(area_elem.get('id'))
+        ubsim_plist = zip(*ubsim_plist)
+            
+        # keep same order as ubsim_plist
+        name_list = ['p:numbers', 'mobilityListUEs1', 'csModelListUEs1', 'profileListUEs1', 'apnListUEs1']
+        for i in range(len(name_list)):
+            attr = dict()
+            attr['name'] = name_list[i]
+            attr['value'] = ','.join(ubsim_plist[i])
+            ElementTree.SubElement(uelistbean_elem, 'property', attr)
+
         area_elem_list.append(area_elem)
 
     # create 'cell' bean
     if is_cell:
-        cell_elem = ElementTree.fromstring(cell_template)
+        cell_elem = ElementTree.fromstring(CELL_TEMPLATE)
         for attr in attr_list:
             if (attr['name'] == 'cell'):
                 cell_elem.set('id', attr['value'].capitalize())
@@ -86,12 +132,21 @@ for g in group_pat.finditer(ltesim_cli_cmd):
 
         cell_elem_list.append(cell_elem)
 
-with open('AreaMap.xml', 'w') as f:
-    for elem in area_elem_list:
-        f.write(re.sub(r'><', r'>\n<', ElementTree.tostring(elem)))
-        f.write('\n')
 
-with open('CellMap.xml', 'w') as f:
-    for elem in cell_elem_list:
-        f.write(re.sub(r'><', r'>\n<', ElementTree.tostring(elem)))
-        f.write('\n')
+def write_to_xml(filename, elem_list):
+    doc = parseString(COMMON_HEADER_TEMPLATE)
+    
+    for e in elem_list:
+        elem = parseString(ElementTree.tostring(e)).documentElement
+        doc.documentElement.appendChild(elem)
+
+    with open(filename, 'w') as f:
+            doc.writexml(f,  addindent="    ",  newl="\n")
+            doc.unlink()
+
+write_to_xml('AreaMap.xml', area_elem_list)
+write_to_xml('CellMap.xml', cell_elem_list)
+
+
+
+
