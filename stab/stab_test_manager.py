@@ -1,9 +1,11 @@
-import pexpect
+#!/app/vbuild/SLED11-x86_64/python/2.7.10/bin/python
+
 import sys
 import os
 import subprocess
 from multiprocessing import Process
 from argparse import ArgumentParser
+import pexpect
 
 from config_parser import parse_cfg
 from simple_logger import info, warning, error
@@ -12,12 +14,13 @@ MOSHELL = "/app/moshell/latest/moshell/moshell"
 MOSHELL_G2_ARGS = 'comcli=21,username=expert,password=expert'
 MOSHELL2 = "{} -v '{}'".format(MOSHELL, MOSHELL_G2_ARGS)
 
-MOSHELL_ROBOT_PROMPT="ROBOT"
-MOSHELL_ROBOT_CFG = 'set_window_title=0,prompt_highlight=0,show_colors=0,prompt_colors=0,prompt={}'.format(MOSHELL_ROBOT_PROMPT)
-
+MOSHELL_ROBOT_PROMPT = "ROBOT"
+MOSHELL_ROBOT_CFG = 'set_window_title=0,prompt_highlight=0,show_colors=0,prompt_colors=0,prompt={}'.format(
+    MOSHELL_ROBOT_PROMPT)
 
 MOSHELL_ROBOT1 = "{} -v '{}'".format(MOSHELL, MOSHELL_ROBOT_CFG)
-MOSHELL_ROBOT2 = "{} -v '{},{}'".format(MOSHELL, MOSHELL_G2_ARGS, MOSHELL_ROBOT_CFG)
+MOSHELL_ROBOT2 = "{} -v '{},{}'".format(MOSHELL, MOSHELL_G2_ARGS,
+                                        MOSHELL_ROBOT_CFG)
 
 
 class ServicesRegistery(object):
@@ -57,40 +60,54 @@ class Services(object):
         """
         moshell to node and leave it in interactive mode
         """
-        moshell_cli = MOSHELL if node_type == 'G1' else MOSHELL2
         info("moshell to " + node_name)
+        moshell_cli = MOSHELL if node_type == 'G1' else MOSHELL2
         exec_cmd = "{} {}".format(moshell_cli, node_ip)
         p = pexpect.spawn(exec_cmd)
         p.expect(".*> ")
         p.sendline('lt all')
+        p.setwinsize(50, 180)
         p.interact()
 
     def _login_uctool(self, name, ip, usrname, passwd):
         """
         ssh to uctool server and leave it in interactive mode
         """
-        prompt = ":~> "
+        prompt = ":.+> "
         info("ssh to " + name)
 
         p = pexpect.spawn("ssh {}@{}".format(usrname, ip))
         p.expect("Password: ")
         p.sendline(passwd)
         p.expect(prompt)
-        p.sendline("cd /uctool/{}/bin".format(name))
+
+        action_sequence = ["cd /uctool/{}/bin".format(name),
+                           "./uctool.sh info"]
+        p.logfile = sys.stdout
+        for act in action_sequence:
+            p.sendline(act)
+            p.expect(prompt)
+        p.logfile = None
+        p.setwinsize(50, 180)
         p.interact()
 
     def _login_ltesim(self, name, ip, usrname, passwd):
         """
         ssh to ltesim server and leave it in interactive mode
         """
-        prompt = ":~> "
+        prompt = ":.+> "
         info("ssh to " + name)
 
         p = pexpect.spawn("ssh {}@{}".format(usrname, ip))
         p.expect("Password: ")
         p.sendline(passwd)
         p.expect(prompt)
-        p.send('\r')
+
+        p.logfile = sys.stdout
+        p.sendline("rpm -qa | egrep 'ltesim|lctool'")
+        p.expect(prompt)
+        p.logfile = None
+        p.setwinsize(50, 180)
         p.interact()
 
     def _ask_yes_or_no(self, prompt):
@@ -109,24 +126,27 @@ class Services(object):
         p = pexpect.spawn(moshell_cmd)
         p.logfile = sys.stdout
         p.expect(moshell_prompt)
-        
+
         for action, tmo in action_sequence:
             p.sendline(action)
             i = p.expect([moshell_prompt, '\[y/n\] \? '], timeout=tmo)
             if i == 1:
                 p.sendline('y')
                 p.expect(moshell_prompt, timeout=tmo)
-
+        p.logfile = None
         p.close()
 
     def _set_cv_and_restart(self,
                             node_ip,
+                            node_name,
                             cv_name,
                             node_type='G1',
                             is_save_cv=True):
         """
         set cv and restart the node
         """
+        info("Start to set cv and restart on node: {}".format(node_name))
+
         action_sequence = [
             ('lt all', 60), ('cvset {}'.format(cv_name), 10), ('confbld+', 10),
             ('accn 0 manualRestart 2 0 0', 10), ('pol', 300)
@@ -143,9 +163,10 @@ class Services(object):
         moshell_cli = MOSHELL_ROBOT1 if node_type == 'G1' else MOSHELL_ROBOT2
         self._run_mo_actions('{} {}'.format(moshell_cli, node_ip),
                              action_sequence)
+        info("CV is set and restart done on node: {}".format(node_name))
 
     def _install_uctool(self, ip, name, release, revision, usrname, passwd):
-
+        info("Start to install software on uctool: {}".format(name))
         exec_cmd = '/proj/stab_lmr/tools/LTEsim/latest/rpm_installer.sh --uctool {rel} {rev} --user {usrname} --server {ip} --uctoolnames "{name}" uctoolinstall'.format(
             rel=release, rev=revision, usrname=usrname, ip=ip, name=name)
 
@@ -153,10 +174,13 @@ class Services(object):
         p.logfile = sys.stdout
         p.expect('Password: ')
         p.sendline(passwd)
-        p.expect(pexpect.EOF)
+        p.expect(pexpect.EOF, timeout=120)
+        info("Installation done on uctool: {}".format(name))
+        p.logfile = None
         p.close()
 
-    def _install_ltesim(self, ip, revision, usrname, passwd):
+    def _install_ltesim(self, ip, name, revision, usrname, passwd):
+        info("Start to install software on ltesim: {}".format(name))
         exec_cmd = '/proj/stab_lmr/tools/LTEsim/latest/rpm_installer.sh --ltesim {rev} --user {usrname} --server {ip} rpminstall'.format(
             rev=revision, usrname=usrname, ip=ip)
 
@@ -164,7 +188,9 @@ class Services(object):
         p.logfile = sys.stdout
         p.expect('Password: ')
         p.sendline(passwd)
-        p.expect(pexpect.EOF)
+        p.expect(pexpect.EOF, timeout=120)
+        info("Installation done on ltesim: {}".format(name))
+        p.logfile = None
         p.close()
 
     @service
@@ -176,13 +202,15 @@ class Services(object):
         if doit:
             p = Process(
                 target=self._install_ltesim,
-                args=(ltesim.ip, ltesim.revision, ltesim.username,
+                args=(ltesim.ip, ltesim.name, ltesim.revision, ltesim.username,
                       ltesim.password))
             process_list.append(p)
 
         for node in node_list:
-            doit = self._ask_yes_or_no("Install 'it{}_{}' on uctool: {} ({})".format(
-                node.uctool_release, node.uctool_revision, node.uctool_name, node.node_name))
+            doit = self._ask_yes_or_no(
+                "Install 'it{}_{}' on uctool: {} ({})".format(
+                    node.uctool_release, node.uctool_revision,
+                    node.uctool_name, node.node_name))
             if doit:
                 p = Process(
                     target=self._install_uctool,
@@ -213,16 +241,16 @@ class Services(object):
         main_script = os.path.abspath(__file__)
         filename = kwargs['filename']
 
-        exec_cmd = 'gnome-terminal -t {name} -e "python {script} -t ltesim -f {fname} -o {name}"'.format(
+        exec_cmd = 'gnome-terminal --geometry=180x50+30+30 -t {name} -e "python {script} -t ltesim -f {fname} -o {name}"'.format(
             script=main_script, name=ltesim.name, fname=filename)
         subprocess.Popen(exec_cmd, shell=True)
 
         for node in node_list:
-            exec_cmd = 'gnome-terminal -t {name} -e "python {script} -t uctool -f {fname} -o {name}"'.format(
+            exec_cmd = 'gnome-terminal --geometry=180x50+30+30 -t {name} -e "python {script} -t uctool -f {fname} -o {name}"'.format(
                 script=main_script, name=node.uctool_name, fname=filename)
             subprocess.Popen(exec_cmd, shell=True)
 
-            exec_cmd = 'gnome-terminal -t {name} -e "python {script} -t node -f {fname} -o {name}"'.format(
+            exec_cmd = 'gnome-terminal --geometry=180x50+30+30 -t {name} -e "python {script} -t node -f {fname} -o {name}"'.format(
                 script=main_script, name=node.node_name, fname=filename)
             subprocess.Popen(exec_cmd, shell=True)
 
