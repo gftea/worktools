@@ -36,7 +36,7 @@ KV_PATTERN = re.compile(
 GROUP_PATTERN = re.compile(r'{(.+?)}')
 LTESIMCLI_PATTERN = re.compile('ltesim_cli')
 UEPAIR_PATTERN = re.compile(
-    r'(?P<cnt1>\d+)\.times.*(?P<cnt2>\d+)\.times.*create_user_pair\(.*,\s*"(?P<mobility>\w+)"\s*,\s*"(?P<csmodel>\w+)"\s*,\s*"(?P<psmodel>\w+)"\s*,\s*"(?P<uetype>\w+)"\s*,\s*"(?P<area>\w+)"\s*\)')
+    r'(?P<cnt1>\d+)\.times.*(?P<cnt2>\d+)\.times.*create_user_pair\(\s*""\s*,\s*"(?P<mobility1>\w+)"\s*,\s*"(?P<csmodel1>\w+)"\s*,\s*"(?P<psmodel1>\w+)"\s*,\s*"(?P<uetype1>\w+)"\s*,\s*"(?P<area1>\w+)"\s*,\s*"(?P<mobility2>\w+)"\s*,\s*"(?P<csmodel2>\w+)"\s*,\s*"(?P<psmodel2>\w+)"\s*,\s*"(?P<uetype2>\w+)"\s*,\s*"(?P<area2>\w+)"\s*\)')
 
 RED = '\033[31m'
 GREEN = '\033[32m'
@@ -78,12 +78,24 @@ ue_pair_map = dict()
 with open(sys.argv[2]) as f:
     for line in f:
         m = UEPAIR_PATTERN.search(line)
-        if m:
-            area = m.group('area').upper()
-            ubsim_plist = ue_pair_map.setdefault(area, [])  # list of tuple
+        if m:        
+            area1 = m.group('area1').upper()
+            area2 = m.group('area2').upper()
+            if area1 != area2:
+                msg = error_color('''
+                Found one UE pair allocated in different areas at below line!
+                -
+                %s
+                -
+                Nothing will be generated!
+                ''' % (line))
+                sys.exit(msg)
+
+            ubsim_plist = ue_pair_map.setdefault(area1, [])  # list of tuple
             num = str(int(m.group('cnt1')) * int(m.group('cnt2')))
-            ubsim_plist.append((num, m.group('mobility'), m.group('csmodel'),
-                                m.group('psmodel'), m.group('uetype')))
+            ubsim_plist.append((num, 
+                                m.group('mobility1'), m.group('csmodel1'), m.group('psmodel1'), m.group('uetype1'),
+                                m.group('mobility2'), m.group('csmodel2'), m.group('psmodel2'), m.group('uetype2')))
 
 area_elem_list = []
 cell_elem_list = []
@@ -120,14 +132,20 @@ for g in GROUP_PATTERN.finditer(ltesim_cli_cmd):
         ubsim_plist = zip(*ubsim_plist)
 
         # keep same order as ubsim_plist
-        name_list = ['p:numbers', 'mobilityListUEs1', 'csModelListUEs1',
-                     'profileListUEs1', 'apnListUEs1']
+        name_list = ['numbers', 'mobilityListUEs1', 'csModelListUEs1',
+                     'profileListUEs1', 'apnListUEs1','mobilityListUEs2', 'csModelListUEs2',
+                     'profileListUEs2', 'apnListUEs2']
+       
+        vset = set()
         for i in range(len(name_list)):
-            attr = dict()
-            attr['name'] = name_list[i]
-            attr['value'] = ','.join(ubsim_plist[i])
-            ElementTree.SubElement(uelistbean_elem, 'property', attr)
-
+            v = ','.join(ubsim_plist[i])
+            if not v in vset:
+                vset.add(v)
+                attr = dict()
+                attr['name'] = name_list[i]
+                attr['value'] = v
+                ElementTree.SubElement(uelistbean_elem, 'property', attr)
+        
         area_elem_list.append(area_elem)
 
     # create 'cell' bean
@@ -147,7 +165,7 @@ def write_to_xml(filename, elem_list):
 
     commentnode = doc.createComment(
         'Below beans are created from "%s" and "%s" by script "%s"' %
-        (sys.argv[1], sys.argv[2], sys.argv[0]))
+        (os.path.realpath(sys.argv[1]), os.path.realpath(sys.argv[2]), sys.argv[0]))
 
     root.appendChild(commentnode)
     for e in elem_list:
