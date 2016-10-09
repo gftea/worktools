@@ -1,38 +1,44 @@
 import logging 
 
 
-RED = '\033[31m'
-GREEN = '\033[32m'
-YELLOW = '\033[33m'
-BLUE = '\033[34m'
-CYAN = '\033[36m'
+RED = '\033[31;1m'
+GREEN = '\033[32;1m'
+YELLOW = '\033[33;1m'
+BLUE = '\033[34;1m'
+CYAN = '\033[36;1m'
 ENDC = '\033[0m'
 
 
-def green():
-    return {'color_start':GREEN, 'color_end':ENDC}
+def green(s):
+    return GREEN + s + ENDC
 
-def blue():
-    return {'color_start':BLUE, 'color_end':ENDC}
+def blue(s):
+    return BLUE + s + ENDC
 
-def yellow():
-    return {'color_start':YELLOW, 'color_end':ENDC}
+def yellow(s):
+    return YELLOW + s + ENDC 
 
-def red():
-    return {'color_start':RED, 'color_end':ENDC}
+def red(s):
+    return RED + s + ENDC
 
+
+
+GREEN_EXT = {'color_start':GREEN, 'color_end':ENDC}
+BLUE_EXT = {'color_start':BLUE, 'color_end':ENDC}
+YELLOW_EXT = {'color_start':YELLOW, 'color_end':ENDC}
+RED_EXT = {'color_start':RED, 'color_end':ENDC}
 
 fmt = "%(color_start)s%(levelname)s: %(message)s%(color_end)s"
 logging.basicConfig(level=logging.INFO, format=fmt)
 
 def info(msg):
-    logging.info(msg, extra=green())
+    logging.info(msg, extra=GREEN_EXT)
 
 def warning(msg):
-    logging.warning(msg, extra=yellow())
+    logging.warning(msg, extra=YELLOW_EXT)
 
 def error(msg):
-    logging.warning(msg, extra=red())
+    logging.warning(msg, extra=RED_EXT)
 
 
 
