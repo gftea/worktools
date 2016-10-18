@@ -46,9 +46,9 @@ class ServicesRegistery(object):
 
 def service(func):
     def _service(*args, **kwargs):
-        info("Staring service: {}".format(func.func_name))
+        info("##### Staring service:: '{}' #####".format(func.func_name))
         ret = func(*args, **kwargs)
-        info("Service {} is done!".format(func.func_name))
+        info("##### Service '{}' is done! #####".format(func.func_name))
         return ret
 
     return _service
@@ -82,7 +82,7 @@ class Services(object):
         p.expect(".*> ")
         p.sendline('lt all')
         p.logfile_read = None
-        p.interact()
+        p.interact(escape_character=None)
 
     def _login_uctool(self, name, ip, usrname, passwd):
         """
@@ -101,7 +101,7 @@ class Services(object):
                            "./uctool.sh info"]
         self._do_actions(p, action_sequence, self._uctool_prompt)
         p.logfile_read = None
-        p.interact()
+        p.interact(escape_character=None)
 
     def _login_ltesim(self, name, ip, usrname, passwd):
         """
@@ -119,7 +119,7 @@ class Services(object):
         action_sequence = ["rpm -qa | egrep 'ltesim|lctool'"]
         self._do_actions(p, action_sequence, self._ltesim_prompt)
         p.logfile_read = None
-        p.interact()
+        p.interact(escape_character=None)
 
     def _ask_yes_or_no(self, prompt):
         while (True):
@@ -133,7 +133,7 @@ class Services(object):
         run moshell commands sequentially 
         """
 
-        p = pexpect.spawn(moshell_cmd, timeout=900)
+        p = pexpect.spawn(moshell_cmd, timeout=900, dimensions=self._win_size)
         p.logfile_read = sys.stdout
         p.expect(self._moshell_prompt)
 
@@ -191,7 +191,7 @@ class Services(object):
         p.logfile_read = sys.stdout
         p.expect('Password: ')
         p.sendline(passwd)
-        p.expect(pexpect.EOF, timeout=120)
+        p.expect(pexpect.EOF, timeout=300)
         info("Installation done on uctool: {}".format(name))
         p.logfile_read = None
         p.close()
@@ -205,7 +205,7 @@ class Services(object):
         p.logfile_read = sys.stdout
         p.expect('Password: ')
         p.sendline(passwd)
-        p.expect(pexpect.EOF, timeout=120)
+        p.expect(pexpect.EOF, timeout=300)
         info("Installation done on ltesim: {}".format(name))
         p.logfile_read = None
         p.close()
@@ -286,7 +286,7 @@ class Services(object):
         info("Login to {} and {}".format(node_name, uctool_name))
         moshell_cli = MOSHELL_ROBOT1 if node_type == 'G1' else MOSHELL_ROBOT2
         moshell_cmd = '{} {}'.format(moshell_cli, node_ip)
-        pnode = pexpect.spawn(moshell_cmd, timeout=360)
+        pnode = pexpect.spawn(moshell_cmd, timeout=360, dimensions=self._win_size)
         pnode.expect(self._moshell_prompt)
         pnode.logfile_read = sys.stdout
         action_sequence = ["lt all",
@@ -294,8 +294,8 @@ class Services(object):
 #        action_sequence.append("mr simcells cell administ 0")
         self._do_actions(pnode, action_sequence, self._moshell_prompt)
 
-        puctool = pexpect.spawn(
-            'ssh {}@{}'.format(usrname, uctool_ip), timeout=300)
+        ssh_cmd = 'ssh {}@{}'.format(usrname, uctool_ip)
+        puctool = pexpect.spawn(ssh_cmd, timeout=300, dimensions=self._win_size)
         puctool.expect('Password: ')
         puctool.sendline(passwd)
         puctool.expect(self._uctool_prompt)
@@ -329,17 +329,19 @@ class Services(object):
         m = re.search("udplogger.sh: (.+?/udplogger.log) created", puctool.before)
         uctool_logfile = m.group(1)
         search_keywords = 'WAITING_FOR_CELL_SETUP'
+
+        info("searching {} in {}".format(search_keywords, uctool_logfile))
         for i in range(30):
             time.sleep(10)
-            info("searching {} in {}".format(search_keywords, uctool_logfile))
             puctool.sendline('grep {} {}'.format(search_keywords,uctool_logfile))
             puctool.expect(self._uctool_prompt)
-            m = re.search(search_keywords, puctool.before)
+            m = re.search("_"+search_keywords, puctool.before)
             if m != None:
                 info("{} found in {}!".format(search_keywords, uctool_logfile))
                 break
-            if i == 5:
-                raise RuntimeError(red("Timeout waiting for CELL_SETUP on uctool {}".format(uctool_name)))
+        else:
+            raise RuntimeError(red("Timeout waiting for CELL_SETUP on uctool {}".format(uctool_name)))
+
         sleep_time = 60
         info("Waiting for {} seconds before continue".format(sleep_time))
         time.sleep(sleep_time)
@@ -351,8 +353,9 @@ class Services(object):
         puctool.close()
         pnode.close()
 
+
     @service
-    def run_recovery(self, node_list, *args, **kwargs):
+    def start_recovery(self, node_list, *args, **kwargs):
         process_list = []
         for node in node_list:
             is_do_recovery = self._ask_yes_or_no(
