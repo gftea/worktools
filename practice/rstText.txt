@@ -1,0 +1,47 @@
+
+Title
+========
+content.
+
+subtitile
+-----------
+
+Tile2
+============
+
+subtitile2
+------------
+
+- one
+- two
+- tree
+
+1. one
+2. two
+
+#. auto1
+#. auto2
+
+one
+
+	one is a n
+	
+two
+
+	two is also a n
+	
+``bash var = x``
+
+this is `a link`_, working fine? it is based on zope_.
+
+.. _`a link`: http://plone.org
+.. _zope: http://zope.org
+
+go back to subtitile_
+
+this is code ::
+
+	>>> 1+1
+	2
+
+ok
