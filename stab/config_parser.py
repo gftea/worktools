@@ -48,10 +48,11 @@ def parse_cfg(filename):
         enb_cfg_data.uctool_username = config.get(enb, 'Username')
         enb_cfg_data.uctool_password = config.get(enb, 'Password')
 
-        sw_ver_section = config.get(enb, 'SwVersionSection')
-        enb_cfg_data.node_cv = config.get(sw_ver_section, 'NodeCv', raw=True)
-        enb_cfg_data.uctool_release = config.get(sw_ver_section, 'UctoolRelease')
-        enb_cfg_data.uctool_revision = config.get(sw_ver_section, 'UctoolRevision')
+        if config.has_option(enb, 'SwVersionSection'):
+            sw_ver_section = config.get(enb, 'SwVersionSection')
+            enb_cfg_data.node_cv = config.get(sw_ver_section, 'NodeCv', raw=True)
+            enb_cfg_data.uctool_release = config.get(sw_ver_section, 'UctoolRelease')
+            enb_cfg_data.uctool_revision = config.get(sw_ver_section, 'UctoolRevision')
 
         cluster_cfg_data.enodeb_cfg_list.append(enb_cfg_data)
     
@@ -59,9 +60,13 @@ def parse_cfg(filename):
     ltesim_cfg_data = LtesimCfgD()
     ltesim_cfg_data.name = ltesim_section
     ltesim_cfg_data.ip = config.get(ltesim_section, 'Ip')
-    ltesim_cfg_data.revision = config.get(ltesim_section, 'Revision')
-    ltesim_cfg_data.username = config.get(ltesim_section, 'Username')
-    ltesim_cfg_data.password = config.get(ltesim_section, 'Password')
+
+    if config.has_option(ltesim_section, 'Revision'):
+        ltesim_cfg_data.revision = config.get(ltesim_section, 'Revision') 
+    if config.has_option(ltesim_section, 'Username'):
+        ltesim_cfg_data.username = config.get(ltesim_section, 'Username')
+    if config.has_option(ltesim_section, 'Password'):
+        ltesim_cfg_data.password = config.get(ltesim_section, 'Password')
 
 
     cluster_cfg_data.ltesim_cfg = ltesim_cfg_data

@@ -1,0 +1,10 @@
+$currdate = `date +%m%d%H%M`
+
+l+o /proj/stab_lmr/tdd5/moshell_logfiles/$nodename_baseline_$currdate
+
+cvcu
+kget
+sysconread
+get systemconst
+
+l-
