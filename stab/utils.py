@@ -17,7 +17,7 @@ def ask_yes_or_no(prompt):
     while (True):
         valid_answers = ['y', 'n']
         ans = raw_input(blue("{} [y/n] ? ".format(prompt)))
-        if ans in valid_answers:
+        if ans.strip() in valid_answers:
             return True if ans == 'y' else False
 
 

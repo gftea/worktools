@@ -395,7 +395,7 @@ class Services(object):
         process_list = []
         for node in node_list:
             is_to_collect = ask_yes_or_no(
-                "Do you want to collect logs on node: {}".format(node.node_name))
+                "Do you want to collect dcgm logs on node: {}".format(node.node_name))
             if is_to_collect:
                 p = Process(
                     target=self._collect_node_log,
