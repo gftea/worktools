@@ -1,4 +1,9 @@
 #!/app/vbuild/SLED11-x86_64/python/2.7.10/bin/python -u
+"""
+Author: ekaiqch
+Date: 2016-11-23
+"""
+
 
 import os
 import subprocess

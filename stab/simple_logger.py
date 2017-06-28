@@ -5,7 +5,8 @@ RED = '\033[31;1m'
 GREEN = '\033[32;1m'
 YELLOW = '\033[33;1m'
 BLUE = '\033[34;1m'
-CYAN = '\033[36;1m'
+WHITEBLACK = '\033[37;1;40m'
+BLACKWHITE ='\033[30;1;47m'
 ENDC = '\033[0m'
 
 
@@ -21,6 +22,11 @@ def yellow(s):
 def red(s):
     return RED + s + ENDC
 
+def whiteblack(s):
+    return WHITEBLACK + s + ENDC
+
+def blackwhite(s):
+    return BLACKWHITE + s + ENDC
 
 
 GREEN_EXT = {'color_start':GREEN, 'color_end':ENDC}

@@ -1,3 +1,5 @@
+#!/app/vbuild/SLED11-x86_64/python/2.7.10/bin/python
+
 """
 Author: ekaiqch
 Date: 2016-11-23
@@ -9,20 +11,21 @@ import os
 from argparse import ArgumentParser
 from collections import OrderedDict
 from Tkinter import *
-
-
-
+import subprocess
+import tkFont
+import shutil
 
 KV_PATTERN = re.compile(
     r':(?P<name>\w+)\s*=>\s*"?(?P<value>[-_0-9a-zA-Z.]+)"?')
 GROUP_PATTERN = re.compile(r'{(.+?)}')
-LTESIMCLI_PATTERN = re.compile('ltesim_cli')
+LTESIMCLI_PATTERN = re.compile(':rec=>')
 UEPAIR_PATTERN = re.compile(
     r'(?P<cnt1>\d+)\.times.*(?P<cnt2>\d+)\.times.*create_user_pair\(\s*""\s*,\s*"(?P<mobility1>\w+)"\s*,\s*"(?P<csmodel1>\w+)"\s*,\s*"(?P<psmodel1>\w+)"\s*,\s*"(?P<uetype1>\w+)"\s*,\s*"(?P<area1>\w+)"\s*,\s*"(?P<mobility2>\w+)"\s*,\s*"(?P<csmodel2>\w+)"\s*,\s*"(?P<psmodel2>\w+)"\s*,\s*"(?P<uetype2>\w+)"\s*,\s*"(?P<area2>\w+)"\s*\)')
 
 
 
 global cvs
+global fnt
 global southBoundMap, northBoundMap, westBoundMap, eastBoundMap
 global width, height, c_width, c_height
 
@@ -44,29 +47,45 @@ def draw_area(south, north, west, east, name=""):
     coord = transform_coord(west, north)
     area = cvs.create_rectangle(0, 0, w, h, fill='red')
     cvs.move(area, *coord)    
-    cvs.create_text(*transform_coord((west+east)/2, (north+south)/2), text=name)
+    tx, ty = transform_coord((west+east)/2, (north+south)/2)
 
-def draw_cell(x, y, name="", radius=5000):
-    x0, y0 = transform_coord(x-radius, y+radius)
-    x1, y1 = transform_coord(x+radius, y-radius)
+    cvs.create_text(tx, ty, text=name, font=fnt)
+
+def draw_cell(x, y, name="", pci="", radius=5000):
+    x0, y0 = transform_coord(x - radius, y + radius)
+    x1, y1 = transform_coord(x + radius, y - radius)
     cvs.create_oval(x0, y0, x1, y1)
-    tx, ty = transform_coord(x - radius, y)
-    cvs.create_text(tx - 12, ty, text=name, fill='magenta')
-	
+
+    if re.search(r'\d1', name):
+        tx, ty = transform_coord(x - radius, y)
+	cvs.create_text(tx+10, ty, text='{}({})'.format(name, pci), fill='magenta', font=fnt)
+    if re.search(r'\d2', name):
+        tx, ty = transform_coord(x + radius, y)
+	cvs.create_text(tx + 5, ty, text='{}({})'.format(name, pci), fill='magenta', font=fnt)	
+
+def save(is_to_quit):
+    f = 'ltesim_cell_map.eps'
+    cvs.postscript(file=f, colormode='color', pagewidth=c_width, pageheight=c_height)
+    subprocess.Popen('ps2pdf -dEPSCrop -dAutoRotatePages=/None {}'.format(f), shell=True)
+    #subprocess.Popen('pstoimg -density 150 {}'.format(f), shell=True)
+    if is_to_quit:
+        master.destroy()
+
 
 
 if __name__ == '__main__':
 
 	ap = ArgumentParser()
 	ap.add_argument('-f', dest='ltesim_cmd_file', required=True)
-	ap.add_argument('-w', dest='screen_width', required=True)
-
+	ap.add_argument('-w', dest='screen_width', default=1024)
+	ap.add_argument('-q', dest='is_quit', action='store_true')
+        
 	args = ap.parse_args()
 	
 	ltesim_cli_cmd = None
 	with open(args.ltesim_cmd_file) as f:
 		for line in f:
-			if LTESIMCLI_PATTERN.match(line):
+			if LTESIMCLI_PATTERN.search(line):
 				ltesim_cli_cmd = line
 
 	if not ltesim_cli_cmd:
@@ -92,8 +111,11 @@ if __name__ == '__main__':
 	c_height = c_width * height / width
 			
 	master=Tk()
-	cvs = Canvas(master, width=c_width, height=c_height, takefocus=True)
+	cvs = Canvas(master, width=c_width, height=c_height, takefocus=True, bg='white')
 	cvs.pack()
+        
+        # Use explict font object, because default font will be rotated after conversion
+        fnt = tkFont.Font(family='Helvetica') 
 		
 	for g in GROUP_PATTERN.finditer(ltesim_cli_cmd):
 		attr_list = []  # list of dict
@@ -109,21 +131,23 @@ if __name__ == '__main__':
 		if is_area and is_cell:
 			raise RuntimeError('Incorrect ltesim_cli command parameters? Found both "area" and "cell" parameter in same group')
 
-		# create 'area' map
+		# create 'cell' map
 		if is_cell:    
 			cellobj = OrderedDict()
 			for attr in attr_list:
 				if attr['name'] == 'cell':
 					cellobj['name'] = attr['value']
+				if attr['name'] == 'pci':
+					cellobj['pci'] = attr['value']
 				if attr['name'] == 'position_X':
 					cellobj['x'] = int(attr['value'])
 				if attr['name'] == 'position_Y':
 					cellobj['y'] = int(attr['value'])
 			
 			print(cellobj.items())
-			draw_cell(cellobj['x'], cellobj['y'], cellobj['name'])
+			draw_cell(cellobj['x'], cellobj['y'], cellobj['name'], cellobj['pci'])
 			
-		# create 'cell' map
+		# create 'area' map
 		if is_area:
 			areaobj = OrderedDict()
 			for attr in attr_list:
@@ -140,6 +164,8 @@ if __name__ == '__main__':
 					
 			print(areaobj.items())
 			draw_area(areaobj['south'], areaobj['north'], areaobj['west'], areaobj['east'], areaobj['name'])
-			
-	mainloop()
 
+
+        master.after(5000, save, args.is_quit)
+        master.mainloop()
+        

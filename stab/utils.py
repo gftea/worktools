@@ -44,7 +44,10 @@ def pssh(ip, name, usrname, passwd, is_interact=False):
     info("ssh to " + name)
     exec_cmd = "ssh {}@{}".format(usrname, ip)
     p = pexpect.spawn(exec_cmd, timeout=1800, dimensions=TTY_WIN_SIZE)
-    p.expect("Password: ", timeout=30)
+    ret = p.expect(["connecting (yes/no)?", "[pP]assword: "], timeout=30)
+    if ret == 0:
+        p.sendline('yes')
+        p.expect("[pP]assword: ", timeout=30)  
     p.sendline(passwd)
     p.expect(SSH_PROMPT, timeout=30)
     
