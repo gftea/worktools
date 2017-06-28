@@ -239,7 +239,7 @@ class Services(object):
             info(exec_cmd)
             subprocess.Popen(exec_cmd, shell=True)
 
-    def _recover(self, node_ip, node_name, node_type, uctool_ip, uctool_name,
+    def _recover(self, node_ip, node_name, node_type, uct_ip, uct_name,
                  usrname, passwd):
         """
         1. block uctool cells and stop uctool
@@ -249,74 +249,81 @@ class Services(object):
         5. deblock uctool cells
         """
         with pmoshell(node_ip, node_name, node_type) as pnode:
-            with pssh(uctool_ip, uctool_name, usrname, passwd) as puctool:
+            uct_ip_list = map(lambda x : x.strip(), uct_ip.split(','))
+            uct_name_list = map(lambda x : x.strip(), uct_name.split(','))
+            
+            pnode.logfile_read = sys.stdout
+            sleep_time = 60            
+            info("Blocking uctool cells on: {}".format(node_name))
+            actionslist = [
+                "lt all",
+                "ma simcells cell simulated true",
+                "bl simcells"
+            ]
+            self._run_mo_actions(pnode, actionslist)
 
-                pnode.logfile_read = sys.stdout
-                puctool.logfile_read = sys.stdout
-
-                info("Blocking uctool cells on: {}".format(node_name))
-                actionslist = [
-                    "lt all",
-                    "ma simcells cell simulated true",
-                    "bl simcells"
-                ]
-                self._run_mo_actions(pnode, actionslist)
-
-
-                info("Stopping uctool: {}".format(uctool_name))
-                actionslist = [
-                    "cd /uctool/{}/bin".format(uctool_name),
-                    "./uctool.sh stop"
-                ]
-                self._do_actions(puctool, actionslist, SSH_PROMPT)
-
-                sleep_time = 60
-                info("Waiting for {} seconds before continue".format(sleep_time))
-                time.sleep(sleep_time)
-        
-                info("Cold restarting the node: {}".format(node_name))
-                restart_cmd = "accn 0 manualRestart 2 0 0" if node_type == 'G1' else "accn FieldReplaceableUnit=1$ restartUnit 1 0 0"
-                actionslist = ["lt all", "confbld+", restart_cmd, "pol 10 60"]
-                self._run_mo_actions(pnode, actionslist)
+            for uctool_ip, uctool_name in zip(uct_ip_list, uct_name_list):
+                with pssh(uctool_ip, uctool_name, usrname, passwd) as puctool:
+                    puctool.logfile_read = sys.stdout
 
 
-                info("Blocking simulated cells on node: {}".format(node_name))
-                actionslist = [
-                    "st simcells",
-                    "wait 120",
-                    "bl simcells",
-                    "wait 60",
-                    "st simcells"
-                ]
-                self._run_mo_actions(pnode, actionslist)
+                    info("Stopping uctool: {}".format(uctool_name))
+                    actionslist = [
+                        "cd /uctool/{}/bin".format(uctool_name),
+                        "./uctool.sh stop"
+                    ]
+                    self._do_actions(puctool, actionslist, SSH_PROMPT)
 
-                info("Restartng uctool: {}".format(uctool_name))
-                puctool.sendline('/uctool/{uctname}/bin/uctool.sh --logdir /mnt/logdisk/{uctname}/ --timestamped restart'.format(uctname=uctool_name))
-                puctool.expect(SSH_PROMPT)
-                m = re.search("udplogger.sh: (.+?/udplogger.log) created", puctool.before)
-                uctool_logfile = m.group(1)
-                search_keywords = 'WAITING_FOR_CELL_SETUP'
 
-                info("searching {} in {}".format(search_keywords, uctool_logfile))
-                for i in range(30):
-                    time.sleep(10)
-                    puctool.sendline('grep {} {}'.format(search_keywords,uctool_logfile))
+            info("Waiting for{} seconds before continue".format(sleep_time))
+            time.sleep(sleep_time)
+            
+            info("Cold restarting the node: {}".format(node_name))
+            restart_cmd = "accn 0 manualRestart 2 0 0" if node_type == 'G1' else "accn FieldReplaceableUnit=1$ restartUnit 1 0 0"
+            actionslist = ["lt all", "confbld+", restart_cmd, "pol 10 60"]
+            self._run_mo_actions(pnode, actionslist)
+
+            info("Blocking simulated cells on node: {}".format(node_name))
+            actionslist = [
+                "st simcells",
+                "wait 20",
+                "bl simcells",
+                "wait 20",
+                "st simcells"
+            ]
+            self._run_mo_actions(pnode, actionslist)
+
+            for uctool_ip, uctool_name in zip(uct_ip_list, uct_name_list):
+                with pssh(uctool_ip, uctool_name, usrname, passwd) as puctool:
+                    puctool.logfile_read = sys.stdout            
+            
+                    info("Restartng uctool: {}".format(uctool_name))     
+                    puctool.sendline('/uctool/{uctname}/bin/uctool.sh --logdir /mnt/logdisk/{uctname}/ --timestamped restart'.format(uctname=uctool_name))
                     puctool.expect(SSH_PROMPT)
-                    m = re.search("_"+search_keywords, puctool.before)
-                    if m != None:
-                        info("{} found in {}!".format(search_keywords, uctool_logfile))
-                        break
-                else:
-                    raise RuntimeError(red("Timeout waiting for CELL_SETUP on uctool {}".format(uctool_name)))
+                    m = re.search("udplogger.sh: (.+?/udplogger.log) created", puctool.before)
+                    uctool_logfile = m.group(1)
+                    search_keywords = 'WAITING_FOR_CELL_SETUP'
 
-                sleep_time = 60
-                info("Waiting for {} seconds before continue".format(sleep_time))
-                time.sleep(sleep_time)
+                    info("searching {} in {}".format(search_keywords, uctool_logfile))
+                    for i in range(30):
+                        time.sleep(10)
+                        puctool.sendline('grep {} {}'.format(search_keywords,uctool_logfile))
+                        puctool.expect(SSH_PROMPT)
+                        m = re.search("_"+search_keywords, puctool.before)
+                        if m != None:
+                            info("{} found in {}!".format(search_keywords, uctool_logfile))
+                            break
+                    else:
+                        raise RuntimeError(red("Timeout waiting for CELL_SETUP on uctool {}".format(uctool_name)))
 
-                info("Deblocking simulated cells on node: {}".format(node_name))
-                actionslist = ["deb simcells", "wait 120", "st simcells"]
-                self._run_mo_actions(pnode, actionslist)
-                time.sleep(1)
+
+            info("Waiting for {} seconds before continue".format(sleep_time))
+            time.sleep(sleep_time)
+
+            info("Deblocking simulated cells on node: {}".format(node_name))
+            actionslist = ["deb simcells", "wait 120", "st simcells"]
+            self._run_mo_actions(pnode, actionslist)
+            time.sleep(1)
 
 
     @service
@@ -395,7 +402,7 @@ class Services(object):
         process_list = []
         for node in node_list:
             is_to_collect = ask_yes_or_no(
-                "Do you want to collect dcgm logs on node: {}".format(node.node_name))
+                "Do you want to collect logs on node: {}".format(node.node_name))
             if is_to_collect:
                 p = Process(
                     target=self._collect_node_log,
@@ -439,11 +446,12 @@ if __name__ == '__main__':
         '-t', dest='obj_type', default=None, choices=obj_type_list)
     arg_parser.add_argument('-o', dest='obj_to_operate', default=None)
 
-    arg_parser.add_argument('-f', dest='cfg_file', nargs='?')
+    arg_parser.add_argument('-f', dest='cfg_file', nargs='?', required=True)
     arg_parser.add_argument(
         '-s',
         dest='services',
         nargs='+',
+        required=True,
         choices=Services._registered_services)
 
     cli_args = arg_parser.parse_args()

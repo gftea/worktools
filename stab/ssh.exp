@@ -1,0 +1,19 @@
+#!/usr/bin/expect -f
+
+
+set addr [lindex $argv 0]
+set usr [lindex $argv 1]
+set passwd [lindex $argv 2]
+
+
+spawn ssh -X $usr@$addr
+
+#######################
+set timeout 30
+expect {
+    Password: {
+	exp_send $passwd\r
+    }
+}
+
+interact

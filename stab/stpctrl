@@ -1,0 +1,149 @@
+#!/app/vbuild/SLED11-x86_64/python/2.7.10/bin/python
+
+import sys
+import os
+import re
+import getpass
+import ConfigParser
+import subprocess
+import glob
+from argparse import ArgumentParser
+
+from utils import *
+
+
+ssh_exp = '''\
+#!/usr/bin/expect -f
+
+spawn %(cmd)s
+
+#######################
+set timeout 180
+expect {
+    -re "(P|p)assword: ?" {
+	exp_send %(passwd)s\\r
+    }
+}
+
+interact
+'''
+def gen_ssh_exp_cmd(cmd, passwd):
+    tmpfile = '.' + re.sub('\W+', '_', cmd)
+    
+    if os.path.exists(tmpfile):
+        os.remove(tmpfile)
+    with open(tmpfile, 'w') as f:
+        f.write(ssh_exp % {"cmd": cmd, "passwd": passwd})
+    return 'expect -f {}'.format(tmpfile)
+
+
+termcmd = 'gnome-terminal --geometry=180x50+30+30 -t "{0}" -e "{1}" 2>/dev/null &'
+def runcmd(cmd, new_term=False, title=""):
+
+    cmd =  termcmd.format(title, cmd) if new_term == True else '{} 2>/dev/null &'.format(cmd)
+    p = subprocess.Popen(cmd, shell=True)
+    p.communicate()
+
+def start_server(servername, cfg_file):
+    cmd = "ssh -tX {} {} -f {}".format(servername, __file__, cfg_file)
+    p = subprocess.Popen(cmd, shell=True)
+    p.communicate()
+
+def user_select(prompt = "Which actions to run? Several actions can be delimited by ','. Or 'r' to reload menu: "):
+    while(True):
+        ans_list = raw_input(blue(prompt)).replace(" ", "").split(',')
+        if not False in map(lambda x: x.isdigit(), ans_list):
+            return ans_list
+        elif ans_list[0] == 'r':
+            return
+
+def display_menu(index, text):
+    menu_str = '['+GREEN+'{:<2}'+ENDC+']: {}'
+    menu_str = menu_str.format(index, blackwhite(text)) if index % 2 == 0 else menu_str.format(index, yellow(text))
+    print(menu_str)
+
+
+def read_cfg(cfg):
+    cfgparser = ConfigParser.SafeConfigParser()
+    cfgparser.read(cfg)
+    global labserver
+    global batserver
+    global username
+    global password
+    labserver = cfgparser.get('DEFAULT', 'labserver')
+    batserver = cfgparser.get('DEFAULT', 'batserver')
+    username = cfgparser.get('DEFAULT', 'username')
+    password = cfgparser.get('DEFAULT', 'password')
+
+    global action_list
+    action_list = []
+    for section in cfgparser.sections():
+        option_list = cfgparser.get(section, 'list').splitlines()
+        for host in option_list:
+            action_list.append('{} {}'.format(section, host))
+
+    action_list.append('ssh -X {}   # LAB server'.format(labserver))
+    action_list.append('ssh -X {}   # BAT server'.format(batserver))
+
+
+
+
+def main(cfg_file):
+
+    if cfg_file == None:
+        scriptpath = os.path.dirname(__file__)
+        cfgpath = os.path.join(scriptpath, 'cfg')
+        all_cfg_files = glob.glob(cfgpath+"/*.cfg")
+        for i, f in enumerate(all_cfg_files, start=1): 
+            display_menu(i, os.path.splitext(os.path.basename(f))[0])
+
+        i = user_select(prompt="Select a STP to control: ")[0]
+        selected_cfg = all_cfg_files[int(i)-1]
+    else:
+        selected_cfg = cfg_file
+
+    read_cfg(selected_cfg)
+
+    if os.uname()[1] != labserver:
+        start_server(labserver, selected_cfg)
+    else:
+        selected = None        
+        while (True):
+            print green('=' * 40 + " " + os.path.basename(selected_cfg) + " " + '=' * 40)
+            for index, action in enumerate(action_list, start=1):                
+                if selected != None:
+                    cmd = action
+                    title = cmd
+                    if '#' in action:
+                        i = action.find('#')
+                        cmd = action[0:i].strip()
+                        title = action[i+1:].strip()
+                    if str(index) in selected:
+                        if re.search('rdesktop', cmd):
+                            # default rdesktop: /app/vbuild/SLED11-x86_64/rdesktop/1.8.2/bin/
+                            cmd = cmd + ' -T "{}"'.format(title)
+                            runcmd(cmd)
+                        else:
+                            if re.search('ssh.+?lteran@.+', cmd, re.IGNORECASE):
+                                cmd = gen_ssh_exp_cmd(cmd, 'Lt3R4n56')
+                            elif re.search('ssh.+?ltelab@.+', cmd, re.IGNORECASE):
+                                cmd = gen_ssh_exp_cmd(cmd, 'ltesimltesim')
+                            elif re.search('ssh.+?lteisp@.+', cmd, re.IGNORECASE):
+                                cmd = gen_ssh_exp_cmd(cmd, 'lteisplteisp')
+                            runcmd(cmd, new_term=True, title=title)
+
+                display_menu(index, action)
+              
+            selected = user_select()
+            if selected == None:
+                read_cfg(selected_cfg)
+
+
+
+
+if __name__ == '__main__':
+    arg_parser = ArgumentParser()
+    arg_parser.add_argument('-f', dest='cfg_file')
+    args = arg_parser.parse_args()
+
+    main(args.cfg_file)

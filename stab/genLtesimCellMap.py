@@ -48,20 +48,21 @@ def draw_area(south, north, west, east, name=""):
     area = cvs.create_rectangle(0, 0, w, h, fill='red')
     cvs.move(area, *coord)    
     tx, ty = transform_coord((west+east)/2, (north+south)/2)
-
     cvs.create_text(tx, ty, text=name, font=fnt)
 
+    
 def draw_cell(x, y, name="", pci="", radius=5000):
     x0, y0 = transform_coord(x - radius, y + radius)
     x1, y1 = transform_coord(x + radius, y - radius)
     cvs.create_oval(x0, y0, x1, y1)
 
+
     if re.search(r'\d1', name):
         tx, ty = transform_coord(x - radius, y)
-	cvs.create_text(tx+10, ty, text='{}({})'.format(name, pci), fill='magenta', font=fnt)
+	cvs.create_text(tx+10, ty+5, text='{}({})'.format(name, pci), fill='magenta', font=fnt)
     if re.search(r'\d2', name):
         tx, ty = transform_coord(x + radius, y)
-	cvs.create_text(tx + 5, ty, text='{}({})'.format(name, pci), fill='magenta', font=fnt)	
+	cvs.create_text(tx + 5, ty-5, text='{}({})'.format(name, pci), fill='magenta', font=fnt)	
 
 def save(is_to_quit):
     f = 'ltesim_cell_map.eps'
@@ -84,9 +85,12 @@ if __name__ == '__main__':
 	
 	ltesim_cli_cmd = None
 	with open(args.ltesim_cmd_file) as f:
-		for line in f:
-			if LTESIMCLI_PATTERN.search(line):
-				ltesim_cli_cmd = line
+            ctx = f.read()
+            ctx = re.sub('\n|\r| ', '', ctx)
+            print ctx
+
+	    if LTESIMCLI_PATTERN.search(ctx):
+		ltesim_cli_cmd = ctx
 
 	if not ltesim_cli_cmd:
 		sys.exit('can not find valid ltesim cli configuration command')
@@ -116,7 +120,7 @@ if __name__ == '__main__':
         
         # Use explict font object, because default font will be rotated after conversion
         fnt = tkFont.Font(family='Helvetica') 
-		
+
 	for g in GROUP_PATTERN.finditer(ltesim_cli_cmd):
 		attr_list = []  # list of dict
 
